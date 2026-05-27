@@ -74,7 +74,6 @@ def init_state() -> None:
         "test_options": [],
         "test_submitted": False,
         "test_selection": None,
-        "test_n_options": 4,
     }
     for k, v in defaults.items():
         st.session_state.setdefault(k, v)
@@ -133,7 +132,7 @@ def splash_screen(dataset: Dict[str, List[str]]) -> None:
             st.markdown("### 🧪 Test")
             st.markdown(
                 "Put your knowledge to the test! Identify each chimpanzee from "
-                "multiple-choice options. Your score is tracked throughout the session."
+                "multiple-choice options. Keep track of your score throughout the session!"
             )
             st.markdown("<br>", unsafe_allow_html=True)
             if st.button("Test", use_container_width=True, type="primary", key="btn_test"):
@@ -261,8 +260,9 @@ def learn_mode(dataset: Dict[str, List[str]]) -> None:
         else:
             st.markdown(
                 f"<div style='text-align:center; font-size:1.8em; font-weight:bold;"
-                f" padding:16px; background:#e8f5e9; border-radius:8px; margin:8px 0;'>"
-                f"✅ {st.session_state.learn_answer}</div>",
+                f" padding:16px; border:3px solid #4caf50; border-radius:8px;"
+                f" margin:8px 0; color:#4caf50;'>"
+                f"{st.session_state.learn_answer}</div>",
                 unsafe_allow_html=True,
             )
             st.write("")
@@ -294,19 +294,7 @@ def new_test_question(dataset: Dict[str, List[str]], n_options: int = 4) -> None
 
 
 def testing_mode(dataset: Dict[str, List[str]]) -> None:
-    n_options = st.sidebar.slider(
-        "Choices per question", 2, 8, st.session_state.test_n_options,
-        key="n_options_slider",
-    )
-    if n_options != st.session_state.test_n_options:
-        st.session_state.test_n_options = n_options
-        st.session_state.test_image = None
-
-    if st.sidebar.button("Reset score"):
-        st.session_state.score_correct = 0
-        st.session_state.score_total = 0
-        st.session_state.test_image = None
-        st.rerun()
+    n_options = 4
 
     col_back, col_head = st.columns([1, 6])
     with col_back:
@@ -320,7 +308,15 @@ def testing_mode(dataset: Dict[str, List[str]]) -> None:
     correct = st.session_state.score_correct
     pct = (correct / total * 100) if total else 0.0
     score_str = f"**Score: {correct} / {total}** ({pct:.0f}%)" if total else "**Score: —**"
-    st.markdown(score_str)
+    col_score, col_reset = st.columns([5, 1])
+    with col_score:
+        st.markdown(score_str)
+    with col_reset:
+        if st.button("Reset", use_container_width=True):
+            st.session_state.score_correct = 0
+            st.session_state.score_total = 0
+            st.session_state.test_image = None
+            st.rerun()
 
     st.caption("Identify the chimpanzee from the choices below.")
     st.divider()
@@ -367,13 +363,7 @@ def main() -> None:
     st.set_page_config(page_title="ChimpLearn", page_icon="🐵", layout="wide")
     init_state()
 
-    data_dir = st.sidebar.text_input(
-        "Image folder",
-        value="./chimp_images",
-        help="A folder containing one subfolder per chimp.",
-    )
-
-    dataset = load_dataset(data_dir)
+    dataset = load_dataset("./chimp_images")
 
     if not dataset:
         st.warning(
