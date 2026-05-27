@@ -1,5 +1,5 @@
 """
-Chimp ID Trainer — Streamlit app for zoo volunteers to learn and test
+ChimpLearn — Streamlit app for zoo volunteers to learn and test
 recognition of individual chimpanzees.
 
 Expected folder structure:
@@ -49,7 +49,6 @@ def load_dataset(data_dir: str) -> Dict[str, List[str]]:
 
 
 def flat_image_list(dataset: Dict[str, List[str]]) -> List[Tuple[str, str]]:
-    """Return [(identity, image_path), ...] across the whole dataset."""
     return [(name, p) for name, paths in dataset.items() for p in paths]
 
 
@@ -59,39 +58,234 @@ def flat_image_list(dataset: Dict[str, List[str]]) -> List[Tuple[str, str]]:
 
 def init_state() -> None:
     defaults = {
-        # Score
+        "current_mode": None,       # None=splash, "browse", "learn", "test"
+        # Browse
+        "browse_selected_chimp": None,
+        "browse_idx": 0,
+        # Learn
+        "learn_image": None,
+        "learn_answer": None,
+        "learn_flipped": False,
+        # Test
         "score_correct": 0,
         "score_total": 0,
-        # Current test question
         "test_image": None,
         "test_answer": None,
         "test_options": [],
         "test_submitted": False,
         "test_selection": None,
-        # Slideshow
-        "slideshow_idx": 0,
-        "slideshow_list": [],
-        "slideshow_filter": "All",
+        "test_n_options": 4,
     }
     for k, v in defaults.items():
         st.session_state.setdefault(k, v)
 
 
+# ---------------------------------------------------------------------------
+# Splash screen
+# ---------------------------------------------------------------------------
+
+def splash_screen(dataset: Dict[str, List[str]]) -> None:
+    n_ids = len(dataset)
+    n_imgs = sum(len(v) for v in dataset.values())
+
+    st.markdown(
+        "<h1 style='text-align:center; padding-top:1em;'>🐵 ChimpLearn</h1>",
+        unsafe_allow_html=True,
+    )
+    st.markdown(
+        f"<p style='text-align:center; color:#888; font-size:1.1em;'>"
+        f"{n_ids} chimpanzees · {n_imgs} photos</p>",
+        unsafe_allow_html=True,
+    )
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    col1, col2, col3 = st.columns(3)
+
+    with col1:
+        with st.container(border=True):
+            st.markdown("### 🖼️ Browse")
+            st.markdown(
+                "Explore a gallery of all chimpanzees, each shown with a representative "
+                "photo. Click any chimp to browse their full photo collection."
+            )
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("Browse", use_container_width=True, type="primary", key="btn_browse"):
+                st.session_state.current_mode = "browse"
+                st.session_state.browse_selected_chimp = None
+                st.rerun()
+
+    with col2:
+        with st.container(border=True):
+            st.markdown("### 🃏 Learn")
+            st.markdown(
+                "Study with flashcards. You'll be shown a random chimpanzee photo — "
+                "flip the card to reveal their name, then move on to the next."
+            )
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("Learn", use_container_width=True, type="primary", key="btn_learn"):
+                st.session_state.current_mode = "learn"
+                st.session_state.learn_image = None
+                st.session_state.learn_flipped = False
+                st.rerun()
+
+    with col3:
+        with st.container(border=True):
+            st.markdown("### 🧪 Test")
+            st.markdown(
+                "Put your knowledge to the test! Identify each chimpanzee from "
+                "multiple-choice options. Your score is tracked throughout the session."
+            )
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("Test", use_container_width=True, type="primary", key="btn_test"):
+                st.session_state.current_mode = "test"
+                st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Browse mode
+# ---------------------------------------------------------------------------
+
+def browse_mode(dataset: Dict[str, List[str]]) -> None:
+    if st.session_state.browse_selected_chimp is None:
+        _browse_gallery(dataset)
+    else:
+        _browse_detail(dataset)
+
+
+def _browse_gallery(dataset: Dict[str, List[str]]) -> None:
+    col_back, col_head = st.columns([1, 6])
+    with col_back:
+        if st.button("← Home"):
+            st.session_state.current_mode = None
+            st.rerun()
+    with col_head:
+        st.header("Browse")
+
+    st.caption(
+        "Each chimpanzee is shown with one representative photo. "
+        "Click **View photos →** to browse their full collection."
+    )
+    st.divider()
+
+    chimps = list(dataset.keys())
+    cols_per_row = 3
+    rows = [chimps[i:i + cols_per_row] for i in range(0, len(chimps), cols_per_row)]
+
+    for row in rows:
+        cols = st.columns(cols_per_row)
+        for col, chimp in zip(cols, row):
+            with col:
+                rep_key = f"browse_rep_{chimp}"
+                if rep_key not in st.session_state:
+                    st.session_state[rep_key] = random.choice(dataset[chimp])
+                st.image(st.session_state[rep_key], use_container_width=True)
+                n = len(dataset[chimp])
+                st.markdown(f"**{chimp}** · {n} photo{'s' if n != 1 else ''}")
+                if st.button("View photos →", key=f"browse_btn_{chimp}", use_container_width=True):
+                    st.session_state.browse_selected_chimp = chimp
+                    st.session_state.browse_idx = 0
+                    st.rerun()
+        st.write("")
+
+
+def _browse_detail(dataset: Dict[str, List[str]]) -> None:
+    chimp = st.session_state.browse_selected_chimp
+    images = dataset[chimp]
+    idx = st.session_state.browse_idx % len(images)
+
+    col_back, col_head = st.columns([1, 6])
+    with col_back:
+        if st.button("← Gallery"):
+            st.session_state.browse_selected_chimp = None
+            st.rerun()
+    with col_head:
+        st.header(chimp)
+
+    st.caption(f"Photo {idx + 1} of {len(images)}")
+    st.divider()
+
+    left, mid, right = st.columns([1, 2, 1])
+    with mid:
+        st.image(images[idx], use_container_width=True)
+
+    c_prev, _, c_next = st.columns([2, 3, 2])
+    with c_prev:
+        if st.button("◀ Previous", use_container_width=True):
+            st.session_state.browse_idx = (idx - 1) % len(images)
+            st.rerun()
+    with c_next:
+        if st.button("Next ▶", use_container_width=True):
+            st.session_state.browse_idx = (idx + 1) % len(images)
+            st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Learn mode
+# ---------------------------------------------------------------------------
+
+def new_learn_card(dataset: Dict[str, List[str]]) -> None:
+    identities = list(dataset.keys())
+    answer = random.choice(identities)
+    image_path = random.choice(dataset[answer])
+    st.session_state.learn_image = image_path
+    st.session_state.learn_answer = answer
+    st.session_state.learn_flipped = False
+
+
+def learn_mode(dataset: Dict[str, List[str]]) -> None:
+    col_back, col_head = st.columns([1, 6])
+    with col_back:
+        if st.button("← Home"):
+            st.session_state.current_mode = None
+            st.rerun()
+    with col_head:
+        st.header("Learn — Flashcards")
+
+    st.caption(
+        "You'll see a random chimpanzee photo. "
+        "Click **Reveal Name** to see who it is, then move to the next card."
+    )
+    st.divider()
+
+    if st.session_state.learn_image is None:
+        new_learn_card(dataset)
+
+    left, mid, right = st.columns([1, 2, 1])
+    with mid:
+        st.image(st.session_state.learn_image, use_container_width=True)
+
+        if not st.session_state.learn_flipped:
+            if st.button("🔍 Reveal Name", type="primary", use_container_width=True):
+                st.session_state.learn_flipped = True
+                st.rerun()
+        else:
+            st.markdown(
+                f"<div style='text-align:center; font-size:1.8em; font-weight:bold;"
+                f" padding:16px; background:#e8f5e9; border-radius:8px; margin:8px 0;'>"
+                f"✅ {st.session_state.learn_answer}</div>",
+                unsafe_allow_html=True,
+            )
+            st.write("")
+            if st.button("Next Card →", type="primary", use_container_width=True):
+                new_learn_card(dataset)
+                st.rerun()
+
+
+# ---------------------------------------------------------------------------
+# Test mode
+# ---------------------------------------------------------------------------
+
 def new_test_question(dataset: Dict[str, List[str]], n_options: int = 4) -> None:
-    """Pick a random image and prepare its multiple-choice options."""
     identities = list(dataset.keys())
     if not identities:
         return
-
     answer = random.choice(identities)
     image_path = random.choice(dataset[answer])
-
     distractors = [i for i in identities if i != answer]
     random.shuffle(distractors)
     n_distract = min(n_options - 1, len(distractors))
     options = distractors[:n_distract] + [answer]
     random.shuffle(options)
-
     st.session_state.test_image = image_path
     st.session_state.test_answer = answer
     st.session_state.test_options = options
@@ -99,89 +293,44 @@ def new_test_question(dataset: Dict[str, List[str]], n_options: int = 4) -> None
     st.session_state.test_selection = None
 
 
-# ---------------------------------------------------------------------------
-# Learning mode
-# ---------------------------------------------------------------------------
-
-def learning_mode(dataset: Dict[str, List[str]]) -> None:
-    st.header("Learning Mode")
-    sub_mode = st.radio(
-        "View", ["Slideshow", "Gallery"], horizontal=True, key="learning_sub_mode"
-    )
-    if sub_mode == "Slideshow":
-        slideshow_view(dataset)
-    else:
-        gallery_view(dataset)
-
-
-def slideshow_view(dataset: Dict[str, List[str]]) -> None:
-    identities = ["All"] + list(dataset.keys())
-    selected = st.selectbox("Filter by chimp", identities, key="slideshow_filter_select")
-
-    # Rebuild list if the filter changed
-    if selected != st.session_state.slideshow_filter or not st.session_state.slideshow_list:
-        st.session_state.slideshow_filter = selected
-        st.session_state.slideshow_idx = 0
-        if selected == "All":
-            st.session_state.slideshow_list = flat_image_list(dataset)
-        else:
-            st.session_state.slideshow_list = [(selected, p) for p in dataset[selected]]
-
-    images = st.session_state.slideshow_list
-    if not images:
-        st.info("No images to show.")
-        return
-
-    idx = st.session_state.slideshow_idx % len(images)
-    name, path = images[idx]
-    st.image(path, caption=f"{name}   ({idx + 1} / {len(images)})", use_column_width=True)
-
-    c_prev, c_shuf, c_next = st.columns(3)
-    with c_prev:
-        if st.button("◀ Previous", use_container_width=True):
-            st.session_state.slideshow_idx = (idx - 1) % len(images)
-            st.rerun()
-    with c_shuf:
-        if st.button("🔀 Shuffle", use_container_width=True):
-            random.shuffle(st.session_state.slideshow_list)
-            st.session_state.slideshow_idx = 0
-            st.rerun()
-    with c_next:
-        if st.button("Next ▶", use_container_width=True):
-            st.session_state.slideshow_idx = (idx + 1) % len(images)
-            st.rerun()
-
-
-def gallery_view(dataset: Dict[str, List[str]]) -> None:
-    cols_per_row = st.slider("Images per row", 2, 6, 4)
-    for name, paths in dataset.items():
-        st.subheader(name)
-        st.caption(f"{len(paths)} image{'s' if len(paths) != 1 else ''}")
-        rows = [paths[i:i + cols_per_row] for i in range(0, len(paths), cols_per_row)]
-        for row in rows:
-            cols = st.columns(cols_per_row)
-            for col, img_path in zip(cols, row):
-                with col:
-                    st.image(img_path, use_column_width=True)
-        st.divider()
-
-
-# ---------------------------------------------------------------------------
-# Testing mode
-# ---------------------------------------------------------------------------
-
 def testing_mode(dataset: Dict[str, List[str]]) -> None:
-    st.header("Testing Mode")
+    n_options = st.sidebar.slider(
+        "Choices per question", 2, 8, st.session_state.test_n_options,
+        key="n_options_slider",
+    )
+    if n_options != st.session_state.test_n_options:
+        st.session_state.test_n_options = n_options
+        st.session_state.test_image = None
 
-    n_options = st.sidebar.slider("Number of choices per question", 2, 8, 4)
+    if st.sidebar.button("Reset score"):
+        st.session_state.score_correct = 0
+        st.session_state.score_total = 0
+        st.session_state.test_image = None
+        st.rerun()
+
+    col_back, col_head = st.columns([1, 6])
+    with col_back:
+        if st.button("← Home"):
+            st.session_state.current_mode = None
+            st.rerun()
+    with col_head:
+        st.header("Test")
+
+    total = st.session_state.score_total
+    correct = st.session_state.score_correct
+    pct = (correct / total * 100) if total else 0.0
+    score_str = f"**Score: {correct} / {total}** ({pct:.0f}%)" if total else "**Score: —**"
+    st.markdown(score_str)
+
+    st.caption("Identify the chimpanzee from the choices below.")
+    st.divider()
 
     if st.session_state.test_image is None:
         new_test_question(dataset, n_options=n_options)
 
-    # Center the image so it doesn't take up the full wide layout
     left, mid, right = st.columns([1, 2, 1])
     with mid:
-        st.image(st.session_state.test_image, caption="Who is this chimp?", use_column_width=True)
+        st.image(st.session_state.test_image, caption="Who is this chimp?", use_container_width=True)
 
     if not st.session_state.test_submitted:
         choice = st.radio(
@@ -209,33 +358,14 @@ def testing_mode(dataset: Dict[str, List[str]]) -> None:
             new_test_question(dataset, n_options=n_options)
             st.rerun()
 
-    # Score footer
-    st.divider()
-    total = st.session_state.score_total
-    correct = st.session_state.score_correct
-    pct = (correct / total * 100) if total else 0.0
-    st.metric(
-        label="Score",
-        value=f"{correct} / {total}",
-        delta=f"{pct:.1f}%" if total else None,
-    )
-
-    if st.sidebar.button("Reset score"):
-        st.session_state.score_correct = 0
-        st.session_state.score_total = 0
-        new_test_question(dataset, n_options=n_options)
-        st.rerun()
-
 
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 
 def main() -> None:
-    st.set_page_config(page_title="Chimp ID Trainer", page_icon="🐵", layout="wide")
+    st.set_page_config(page_title="ChimpLearn", page_icon="🐵", layout="wide")
     init_state()
-
-    st.title("🐵 Chimp ID Trainer")
 
     data_dir = st.sidebar.text_input(
         "Image folder",
@@ -252,14 +382,15 @@ def main() -> None:
         )
         st.stop()
 
-    n_ids = len(dataset)
-    n_imgs = sum(len(v) for v in dataset.values())
-    st.sidebar.caption(f"{n_ids} chimps · {n_imgs} images")
+    mode = st.session_state.current_mode
 
-    mode = st.sidebar.radio("Mode", ["Learning", "Testing"], horizontal=True)
-    if mode == "Learning":
-        learning_mode(dataset)
-    else:
+    if mode is None:
+        splash_screen(dataset)
+    elif mode == "browse":
+        browse_mode(dataset)
+    elif mode == "learn":
+        learn_mode(dataset)
+    elif mode == "test":
         testing_mode(dataset)
 
 
