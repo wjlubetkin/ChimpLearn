@@ -63,10 +63,12 @@ def init_state() -> None:
         "browse_selected_chimp": None,
         "browse_idx": 0,
         # Learn
+        "learn_deck": [],
         "learn_image": None,
         "learn_answer": None,
         "learn_flipped": False,
         # Test
+        "test_deck": [],
         "score_correct": 0,
         "score_total": 0,
         "test_image": None,
@@ -219,13 +221,25 @@ def _browse_detail(dataset: Dict[str, List[str]]) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Deck shuffle helper
+# ---------------------------------------------------------------------------
+
+def _deal(deck_key: str, dataset: Dict[str, List[str]]) -> Tuple[str, str]:
+    """Return the next (identity, image_path) from a shuffled deck.
+    Rebuilds and reshuffles automatically when the deck runs out."""
+    if not st.session_state[deck_key]:
+        deck = [(name, path) for name, paths in dataset.items() for path in paths]
+        random.shuffle(deck)
+        st.session_state[deck_key] = deck
+    return st.session_state[deck_key].pop()
+
+
+# ---------------------------------------------------------------------------
 # Learn mode
 # ---------------------------------------------------------------------------
 
 def new_learn_card(dataset: Dict[str, List[str]]) -> None:
-    identities = list(dataset.keys())
-    answer = random.choice(identities)
-    image_path = random.choice(dataset[answer])
+    answer, image_path = _deal("learn_deck", dataset)
     st.session_state.learn_image = image_path
     st.session_state.learn_answer = answer
     st.session_state.learn_flipped = False
@@ -279,8 +293,7 @@ def new_test_question(dataset: Dict[str, List[str]], n_options: int = 4) -> None
     identities = list(dataset.keys())
     if not identities:
         return
-    answer = random.choice(identities)
-    image_path = random.choice(dataset[answer])
+    answer, image_path = _deal("test_deck", dataset)
     distractors = [i for i in identities if i != answer]
     random.shuffle(distractors)
     n_distract = min(n_options - 1, len(distractors))
