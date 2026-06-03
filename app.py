@@ -61,7 +61,7 @@ def init_state() -> None:
         "current_mode": None,       # None=splash, "browse", "learn", "test"
         # Browse
         "browse_selected_chimp": None,
-        "browse_idx": 0,
+        "browse_enlarged_idx": None,
         # Learn
         "learn_deck": [],
         "learn_image": None,
@@ -164,7 +164,7 @@ def _browse_gallery(dataset: Dict[str, List[str]]) -> None:
 
     st.caption(
         "Each chimpanzee is shown with one representative photo. "
-        "Click **View photos →** to browse their full collection."
+        "Click **View photos →** to see their full collection as thumbnails."
     )
     st.divider()
 
@@ -184,7 +184,7 @@ def _browse_gallery(dataset: Dict[str, List[str]]) -> None:
                 st.markdown(f"**{chimp}** · {n} photo{'s' if n != 1 else ''}")
                 if st.button("View photos →", key=f"browse_btn_{chimp}", use_container_width=True):
                     st.session_state.browse_selected_chimp = chimp
-                    st.session_state.browse_idx = 0
+                    st.session_state.browse_enlarged_idx = None
                     st.rerun()
         st.write("")
 
@@ -192,32 +192,46 @@ def _browse_gallery(dataset: Dict[str, List[str]]) -> None:
 def _browse_detail(dataset: Dict[str, List[str]]) -> None:
     chimp = st.session_state.browse_selected_chimp
     images = dataset[chimp]
-    idx = st.session_state.browse_idx % len(images)
+    enlarged = st.session_state.browse_enlarged_idx
 
     col_back, col_head = st.columns([1, 6])
     with col_back:
         if st.button("← Gallery"):
             st.session_state.browse_selected_chimp = None
+            st.session_state.browse_enlarged_idx = None
             st.rerun()
     with col_head:
         st.header(chimp)
 
-    st.caption(f"Photo {idx + 1} of {len(images)}")
+    n = len(images)
+    st.caption(f"{n} photo{'s' if n != 1 else ''} · click 🔍 to enlarge")
     st.divider()
 
-    left, mid, right = st.columns([1, 2, 1])
-    with mid:
-        st.image(images[idx], use_container_width=True)
+    # Enlarged view — shown above thumbnails when active
+    if enlarged is not None and enlarged < n:
+        left, mid, right = st.columns([1, 2, 1])
+        with mid:
+            st.image(images[enlarged], use_container_width=True)
+            if st.button("✕ Close", use_container_width=True):
+                st.session_state.browse_enlarged_idx = None
+                st.rerun()
+        st.divider()
 
-    c_prev, _, c_next = st.columns([2, 3, 2])
-    with c_prev:
-        if st.button("◀ Previous", use_container_width=True):
-            st.session_state.browse_idx = (idx - 1) % len(images)
-            st.rerun()
-    with c_next:
-        if st.button("Next ▶", use_container_width=True):
-            st.session_state.browse_idx = (idx + 1) % len(images)
-            st.rerun()
+    # Thumbnail grid
+    cols_per_row = 4
+    indexed = list(enumerate(images))
+    for row_start in range(0, n, cols_per_row):
+        row = indexed[row_start:row_start + cols_per_row]
+        cols = st.columns(cols_per_row)
+        for col, (img_idx, img_path) in zip(cols, row):
+            with col:
+                st.image(img_path, use_container_width=True)
+                if st.button("🔍", key=f"thumb_{img_idx}", use_container_width=True,
+                             type="primary" if enlarged == img_idx else "secondary"):
+                    st.session_state.browse_enlarged_idx = (
+                        None if enlarged == img_idx else img_idx
+                    )
+                    st.rerun()
 
 
 # ---------------------------------------------------------------------------
