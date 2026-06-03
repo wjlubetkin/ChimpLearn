@@ -61,7 +61,6 @@ def init_state() -> None:
         "current_mode": None,       # None=splash, "browse", "learn", "test"
         # Browse
         "browse_selected_chimp": None,
-        "browse_enlarged_idx": None,
         # Learn
         "learn_deck": [],
         "learn_image": None,
@@ -184,7 +183,6 @@ def _browse_gallery(dataset: Dict[str, List[str]]) -> None:
                 st.markdown(f"**{chimp}** · {n} photo{'s' if n != 1 else ''}")
                 if st.button("View photos →", key=f"browse_btn_{chimp}", use_container_width=True):
                     st.session_state.browse_selected_chimp = chimp
-                    st.session_state.browse_enlarged_idx = None
                     st.rerun()
         st.write("")
 
@@ -192,46 +190,46 @@ def _browse_gallery(dataset: Dict[str, List[str]]) -> None:
 def _browse_detail(dataset: Dict[str, List[str]]) -> None:
     chimp = st.session_state.browse_selected_chimp
     images = dataset[chimp]
-    enlarged = st.session_state.browse_enlarged_idx
-
-    col_back, col_head = st.columns([1, 6])
-    with col_back:
-        if st.button("← Gallery"):
-            st.session_state.browse_selected_chimp = None
-            st.session_state.browse_enlarged_idx = None
-            st.rerun()
-    with col_head:
-        st.header(chimp)
-
     n = len(images)
-    st.caption(f"{n} photo{'s' if n != 1 else ''} · click 🔍 to enlarge")
+
+    # Sticky name header — stays visible while scrolling through thumbnails
+    st.markdown(
+        f"""
+        <style>
+        .chimp-sticky-header {{
+            position: sticky;
+            top: 3.5rem;
+            z-index: 100;
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            padding: 0.5rem 0 0.4rem 0;
+            border-bottom: 1px solid rgba(128,128,128,0.15);
+        }}
+        .chimp-sticky-header h2 {{ margin: 0; }}
+        .chimp-sticky-header small {{ opacity: 0.55; }}
+        </style>
+        <div class="chimp-sticky-header">
+            <h2>{chimp}</h2>
+            <small>{n} photo{'s' if n != 1 else ''}</small>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if st.button("← Gallery"):
+        st.session_state.browse_selected_chimp = None
+        st.rerun()
+
     st.divider()
 
-    # Enlarged view — shown above thumbnails when active
-    if enlarged is not None and enlarged < n:
-        left, mid, right = st.columns([1, 2, 1])
-        with mid:
-            st.image(images[enlarged], use_container_width=True)
-            if st.button("✕ Close", use_container_width=True):
-                st.session_state.browse_enlarged_idx = None
-                st.rerun()
-        st.divider()
-
-    # Thumbnail grid
+    # Thumbnail grid — use browser pinch-to-zoom to enlarge
     cols_per_row = 4
-    indexed = list(enumerate(images))
     for row_start in range(0, n, cols_per_row):
-        row = indexed[row_start:row_start + cols_per_row]
+        row = images[row_start:row_start + cols_per_row]
         cols = st.columns(cols_per_row)
-        for col, (img_idx, img_path) in zip(cols, row):
+        for col, img_path in zip(cols, row):
             with col:
                 st.image(img_path, use_container_width=True)
-                if st.button("🔍", key=f"thumb_{img_idx}", use_container_width=True,
-                             type="primary" if enlarged == img_idx else "secondary"):
-                    st.session_state.browse_enlarged_idx = (
-                        None if enlarged == img_idx else img_idx
-                    )
-                    st.rerun()
 
 
 # ---------------------------------------------------------------------------
